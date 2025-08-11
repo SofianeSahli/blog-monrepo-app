@@ -1,0 +1,39 @@
+services:
+  mongo-users:
+    image: mongo:7.0
+    container_name: mongo-users
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpassword
+      MONGO_INITDB_DATABASE: ieg-auth-ms
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+#  users-service:
+#   build:
+#      context: ./users-service
+#    container_name: users-service
+#    restart: always
+#    ports:
+#      - "4000:4000"
+#   environment:
+#    - PORT=4000
+#    - MONGO_URI=mongodb://admin:adminpassword@mongo-users:27017/ieg-auth-ms?authSource=admin
+#   - SESSION_SECRET=super_secret_session
+#   - JWT_SECRET=w4X9#kLp!7vGqzR2sTy@5mN8uBdCJhZe
+#   - JWT_EXPIRATION=1h
+#   - CLIENT_URL=http://localhost:4200
+# depends_on:
+#   - mongo-users
+
+volumes:
+  mongo-data:
