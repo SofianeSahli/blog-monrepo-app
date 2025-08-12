@@ -8,6 +8,7 @@ import {
   revokeRefreshTokenMongo,
   saveRefreshTokenMongo,
 } from "../conf/jwt.utils";
+import { use } from "passport";
 
 dotenv.config();
 
@@ -59,7 +60,7 @@ router.post(process.env.LOGIN_ROUTE || "/login", (req, res, next) => {
 
     req.logIn(user, { session: true }, async (err) => {
       if (err) return next(err);
-      req.session.userId = user.id;
+      if (user._id) req.session.userId = user._id.toString();
       const refreshToken = jwt.sign(
         { sub: user.id, roles: user.roles },
         REFRESH_TOKEN_SECRET,

@@ -25,9 +25,9 @@ app.use(
     tempFileDir: "/tmp/",
   })
 );
-app.use(express.json());
-
 app.use(express.urlencoded({ extended: true }));
+//app.use(express.json());
+
 app.use(
   session({
     store: new RedisStore({ client: redisClient }),
