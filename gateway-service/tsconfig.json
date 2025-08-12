@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
+        "skipLibCheck": true,
+
     "target": "ES2022",
     "module": "CommonJS",
     "rootDir": "src",
     "outDir": "dist",
     "esModuleInterop": true,
     "strict": true
-    
   },
-  "include": ["src", "types.d.ts"] // or wherever you put it
+  "include": ["src/**/*.ts", "src/types/**/*.d.ts"]
+
 }

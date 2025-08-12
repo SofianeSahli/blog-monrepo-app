@@ -14,11 +14,12 @@ passport.use(
     async (email, password, done) => {
       try {
         const user = await User.findOne({ email });
-        if (!user) return done(null, false, { message: "Incorrect email" });
+        if (!user)
+          return done(null, false, { message: "errors.invalid_credentials" });
 
         const isValid = await user.comparePassword(password);
         if (!isValid)
-          return done(null, false, { message: "Incorrect password" });
+          return done(null, false, { message: "errors.invalid_credentials" });
 
         return done(null, user);
       } catch (error) {

@@ -1,33 +1,33 @@
 import express from "express";
 import session from "express-session";
-import MongoStore from "connect-mongo";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
-import cors from "cors";
 import passport from "./conf/passport";
 import authRoutes from "./routes/auth";
-import connectRedis from "connect-redis";
+import { RedisStore } from "connect-redis";
 import { createClient } from "redis";
+import { router as profileRouter } from "./routes/profile";
+import fileUpload from "express-fileupload";
+import path from "path";
 
 dotenv.config();
-const RedisStore = connectRedis(session);
-const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379",
-});
+const redisClient = createClient({ url: process.env.REDIS_URL });
+
 redisClient.connect().catch(console.error);
 
 const app = express();
-const PORT = process.env.PORT || 4000;
-
-app.use(express.json());
-
+const PORT = process.env.USER_PORT || 4000;
 app.use(
-  cors({
-    origin: process.env.CLIENT_URL || "http://localhost:4200",
-    credentials: true,
+  fileUpload({
+    useTempFiles: true,
+    createParentPath: true,
+    limits: { fileSize: 2 * 1024 * 1024 },
+    tempFileDir: "/tmp/",
   })
 );
+app.use(express.json());
 
+app.use(express.urlencoded({ extended: true }));
 app.use(
   session({
     store: new RedisStore({ client: redisClient }),
@@ -35,21 +35,26 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      httpOnly: true, // prevent JS access to cookies
-      secure: false, // true in production with HTTPS
-      sameSite: "lax", // avoid CSRF issues
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
       maxAge: process.env.JWT_EXPIRATION
         ? parseInt(process.env.JWT_EXPIRATION)
-        : 3600000, // 1 hour
+        : 3600000,
     },
-    rolling: true, // Reset cookie Max-Age on every response
+    rolling: true,
   })
 );
 
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(
+  "/",
+  express.static(path.join(__dirname, "../uploads/profile-pictures"))
+);
+app.use("/", [authRoutes, profileRouter]);
 
-app.use(process.env.AUTH_ROUTE || "/api/auth", authRoutes);
+console.log(process.env.AUTH_ROUTE, process.env.REGISTER_ROUTE);
 
 mongoose
   .connect(process.env.MONGO_URI || "")

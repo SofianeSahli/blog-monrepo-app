@@ -1,21 +1,20 @@
-# Use official Node LTS image
 FROM node:18-alpine
 
-# Set working directory inside container
 WORKDIR /app
 
-# Copy package files and install deps
 COPY package*.json ./
-RUN npm install --production
+RUN npm install
 
-# Copy all source files
 COPY . .
 
-# Build TypeScript (optional if you run ts-node-dev in dev)
+RUN mkdir -p /app/uploads/profile-pictures && \
+    chown -R node:node /app/uploads && \
+    chmod -R 755 /app/uploads
+
+ENV NODE_ENV=dev
+
 RUN npm run build
 
-# Expose the port your app listens on
-EXPOSE 4000
+USER node
 
-# Start the app (change if you use different start script)
-CMD ["node", "dist/server.js"]
+CMD ["npm", "start"]
