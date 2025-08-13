@@ -30,7 +30,6 @@ router.put(
       if (firstName) updateData.firstName = firstName;
       if (lastName) updateData.lastName = lastName;
       if (email) updateData.email = email;
-      console.log(req.body);
 
       if (req.files && req.files.file) {
         const file = req.files.file as UploadedFile;

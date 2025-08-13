@@ -38,6 +38,7 @@ const isAuthenticated = (
   res: express.Response,
   next: express.NextFunction
 ) => {
+  console.log("Session data:", req.session);
   if (req.session && req.session.userId) {
     next();
   } else {
@@ -79,13 +80,14 @@ app.use(
 );
 
 app.use(
-  "/api/articles",
+  process.env.POSTS_SERVICE_ROUTE!,
   isAuthenticated,
   createProxyMiddleware({
     ...proxyOptions,
-    target: "/api/articles",
+    target: process.env.POSTS_SERVICE_URL!,
   })
 );
+
 app.use(
   "/api/notifications",
   isAuthenticated,
@@ -105,5 +107,17 @@ app.use(
     },
   })
 );
+
+app.use(
+  "/uploads/posts-file",
+  createProxyMiddleware({
+    target: process.env.POSTS_SERVICE_URL!,
+    changeOrigin: true,
+    pathRewrite: {
+      "^/uploads/profile-pictures": "/uploads/profile-pictures",
+    },
+  })
+);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Gateway running on port ${PORT}`));

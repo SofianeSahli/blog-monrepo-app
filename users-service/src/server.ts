@@ -11,7 +11,7 @@ import fileUpload from "express-fileupload";
 import path from "path";
 
 dotenv.config();
-const redisClient = createClient({ url: process.env.REDIS_URL });
+export const redisClient = createClient({ url: process.env.REDIS_URL });
 
 redisClient.connect().catch(console.error);
 
@@ -26,7 +26,7 @@ app.use(
   })
 );
 app.use(express.urlencoded({ extended: true }));
-//app.use(express.json());
+app.use(express.json());
 
 app.use(
   session({

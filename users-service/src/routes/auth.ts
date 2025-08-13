@@ -9,6 +9,7 @@ import {
   saveRefreshTokenMongo,
 } from "../conf/jwt.utils";
 import { use } from "passport";
+import { redisClient } from "../server";
 
 dotenv.config();
 
@@ -147,11 +148,19 @@ router.post("/refresh", async (req, res) => {
 });
 
 // Logout route
-router.post(process.env.LOGOUT_ROUTE || "/logout", (req, res, next) => {
+router.post("/logout", (req, res, next) => {
   req.logout((err) => {
     if (err) return next(err);
-    req.session?.destroy(() => {
+
+    req.session?.destroy((err) => {
+      if (err) {
+        console.error("Error destroying session:", err);
+        return res.status(500).json({ message: "Logout error" });
+      }
+
       res.clearCookie("refreshToken");
+      res.clearCookie("connect.sid", { path: "/" });
+
       res.json({ message: "Logged out" });
     });
   });

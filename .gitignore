@@ -1,4 +1,6 @@
 .env
 /uploads/profile-pictures/*
 !/uploads/profile-pictures/.gitkeep
+/uploads/posts-file/*
+!/uploads/posts-file/.gitkeep
 

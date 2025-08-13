@@ -7,16 +7,28 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${DB_USERNAME:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD:-adminpassword}
       MONGO_INITDB_DATABASE: ${AUTHENTICATION_DATABASE:-ieg-auth-ms}
-    ports:
-      - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    ports:
+      - "27017:27017"
 
   redis:
     image: redis:7-alpine
     container_name: redis
-    ports:
-      - "6379:6379"
+    restart: always
+
+  elasticsearch:
+    image: elasticsearch:9.1.1
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    mem_limit: 1g
     restart: always
 
   users-service:
@@ -24,15 +36,28 @@ services:
       context: ./users-service
     container_name: users-service
     restart: always
-    ports:
-      - "4000:4000"
     env_file:
       - .env
     depends_on:
       - mongo-users
       - redis
+      - elasticsearch
     volumes:
       - ./uploads/profile-pictures:/app/uploads/profile-pictures
+
+  posts-service:
+    build:
+      context: ./posts-service
+    container_name: posts-service
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - mongo-users
+      - redis
+      - elasticsearch
+    volumes:
+      - ./uploads/posts-file:/app/uploads/posts-file
 
   gateway-service:
     build:
@@ -45,7 +70,9 @@ services:
       - .env
     depends_on:
       - users-service
+      - posts-service
       - redis
+      - elasticsearch
 
 volumes:
   mongo-data:

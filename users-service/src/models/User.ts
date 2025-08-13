@@ -28,7 +28,7 @@ const UserSchema: Schema<IUser> = new Schema(
     password: { type: String, required: true },
     roles: {
       type: String,
-      default: ["reader"], // default role
+      default: "reader",
     },
   },
   { timestamps: true }
