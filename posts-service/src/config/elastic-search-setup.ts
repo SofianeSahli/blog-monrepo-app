@@ -56,6 +56,8 @@ export async function updatePostInIndex(post: Partial<IPost>) {
       comments: Array.isArray(post.comments)
         ? post.comments.map((c) => (typeof c === "string" ? c : c.toString()))
         : [],
+      tags: post.tags?.map((t) => t.toString()), // Store IDs not names
+
       updatedAt: post.updatedAt,
     },
   });
@@ -96,42 +98,44 @@ export async function searchPosts(query: string) {
   return prepareForResponse(posts);
 }
 export async function getAll() {
-  const result = await esClient.search({
-    index: INDEX,
-    query: { match_all: {} },
-    size: 100,
-  });
+  try {
+    const result = await esClient.search({
+      index: INDEX,
+      query: { match_all: {} },
+      size: 100,
+    });
 
-  const posts = result.hits.hits.map((hit) => ({
-    id: hit._id,
-    ...(hit._source as any),
-  }));
+    const posts = result.hits.hits.map((hit: any) => ({
+      id: hit._id,
+      ...(hit._source as any),
+    }));
 
-  if (!posts.length) return [];
-  return prepareForResponse(posts);
+    return posts.length ? prepareForResponse(posts) : [];
+  } catch (err: any) {
+    if (
+      err.meta?.body?.error?.type === "index_not_found_exception" ||
+      err.statusCode === 404
+    ) {
+      return [];
+    }
+
+    throw err;
+  }
 }
-
 // Basically avoid N+1 querries to ease on database and fetch faster on Bigger DB
 
 const prepareForResponse = async (posts: IPost[]) => {
   const userIds = new Set<string>();
   const tagIds = new Set<string>();
   const commentIds = new Set<string>();
-  console.log(posts);
-  // Collect all initial userIds, tagIds, and first-level commentIds from posts
   for (const post of posts) {
     userIds.add(post.userId.toString());
     (post.tags || []).forEach((t) => tagIds.add(t.toString()));
     (post.comments || []).forEach((c) => commentIds.add(c.toString()));
-    console.log(post.comments, commentIds);
   }
-  // Recursively collect all nested comment IDs from comments' comments
   const collectNestedCommentIds = async (ids: Set<string>) => {
     if (ids.size === 0) return;
-    // Cast strings to ObjectId
     const objectIds = Array.from(ids).map((id) => new Types.ObjectId(id));
-
-    // Fetch only the comments field to discover nested comments
     const comments = await Comment.find({ _id: { $in: objectIds } })
       .select("comments")
       .lean();
@@ -153,7 +157,6 @@ const prepareForResponse = async (posts: IPost[]) => {
 
   await collectNestedCommentIds(commentIds);
 
-  // Now fetch all comments with their fields
   const allCommentObjectIds = Array.from(commentIds).map(
     (id) => new Types.ObjectId(id)
   );
@@ -161,7 +164,6 @@ const prepareForResponse = async (posts: IPost[]) => {
     .select("userId text createdAt comments")
     .lean();
 
-  // Add users from comments
   allComments.forEach((c) => userIds.add(c.userId.toString()));
 
   // Fetch all users and tags
@@ -169,7 +171,7 @@ const prepareForResponse = async (posts: IPost[]) => {
     User.find({
       _id: { $in: Array.from(userIds).map((id) => new Types.ObjectId(id)) },
     })
-      .select("firstName lastName")
+      .select("firstName lastName profilePicture")
       .lean(),
     Tag.find({
       _id: { $in: Array.from(tagIds).map((id) => new Types.ObjectId(id)) },
@@ -178,14 +180,12 @@ const prepareForResponse = async (posts: IPost[]) => {
       .lean(),
   ]);
 
-  // Create lookup maps
   const userMap = Object.fromEntries(users.map((u) => [u._id.toString(), u]));
   const tagMap = Object.fromEntries(tags.map((t) => [t._id.toString(), t]));
   const commentMap = Object.fromEntries(
-    allComments.map((c) => [c._id.toString(), c])
+    allComments.map((c: any) => [c._id.toString(), c])
   );
 
-  // Recursive function to build nested comment trees
   const buildCommentTree = (commentId: string): any => {
     const comment = commentMap[commentId];
     if (!comment) return null;
@@ -198,14 +198,21 @@ const prepareForResponse = async (posts: IPost[]) => {
         .filter(Boolean),
     };
   };
-  console.log(commentIds, commentMap);
-  // Build final posts array with nested comments and populated users/tags
-  return posts.map((post) => ({
-    ...post,
-    user: userMap[post.userId.toString()] || null,
-    tags: (post.tags || []).map((tagId) => tagMap[tagId.toString()] || null),
-    comments: (post.comments || [])
-      .map((commentId) => buildCommentTree(commentId.toString()))
-      .filter(Boolean),
-  }));
+  return posts
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .map((post) => ({
+      ...post,
+      user: userMap[post.userId.toString()] || null,
+      tags: (post.tags || []).map((tagId) => tagMap[tagId.toString()] || null),
+      comments: (post.comments || [])
+        .map((commentId) => buildCommentTree(commentId.toString()))
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ),
+    }));
 };

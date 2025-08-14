@@ -1,123 +1,93 @@
 import express from "express";
 import session from "express-session";
 import cors from "cors";
-import { createProxyMiddleware, Options } from "http-proxy-middleware";
-import { RedisStore } from "connect-redis";
 import { createClient } from "redis";
 import dotenv from "dotenv";
-import path from "path";
+import { createServer } from "http";
+import cookieParser from "cookie-parser";
+import { router } from "./routes/miscs.routes";
+import { sessionMiddleware } from "./config/middelwars";
+import { Server as SocketIOServer } from "socket.io";
 
 dotenv.config();
+
 const app = express();
-const redisClient = createClient({ url: process.env.REDIS_URL });
-redisClient.connect().catch(console.error);
+export const httpServer = createServer(app);
+
+const redisSub = createClient({ url: process.env.REDIS_URL });
+
+(async () => {
+  await redisSub.connect();
+})();
+
 app.use(
   cors({
     origin: process.env.CLIENT_URL || "http://localhost:4200",
     credentials: true,
   })
 );
-app.use(
-  session({
-    store: new RedisStore({ client: redisClient }),
-    secret: process.env.SESSION_SECRET!,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: 60 * 60 * 1000,
-      secure: false, // set true in prod + https
-    },
-    rolling: true,
-  })
-);
+app.use(cookieParser());
+app.use(sessionMiddleware);
 
-const isAuthenticated = (
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) => {
-  console.log("Session data:", req.session);
-  if (req.session && req.session.userId) {
-    next();
-  } else {
-    res.status(401).json({ message: "errors.unauthorized" });
-  }
-};
-
-const proxyOptions: Options = {
-  selfHandleResponse: false,
-  changeOrigin: true,
-  on: {
-    proxyReq: (proxyReq: any, req: any, res) => {
-      if (req.session?.userId) {
-        proxyReq.setHeader("X-User-Id", req.session.userId);
+redisSub.subscribe(
+  process.env.NOTIFICATIONS_READY_TO_DISPATCH ||
+    "notifications_created_to_dispatch",
+  (message) => {
+    try {
+      const notification = JSON.parse(message);
+      console.log("📨 Sending notification:", notification);
+      const targetSocket = userSockets.get(notification.userId);
+      if (targetSocket) {
+        targetSocket.emit("notification", notification);
       }
-    },
 
-    error: (err) => {
-      console.log(err);
-    },
-  },
-};
-
-app.use(
-  process.env.AUTH_ROUTE!,
-  createProxyMiddleware({
-    ...proxyOptions,
-    target: process.env.USER_SERVICE_URL!,
-  })
-);
-
-app.use(
-  process.env.PROFILE_ROUTES!,
-  isAuthenticated,
-  createProxyMiddleware({
-    ...proxyOptions,
-    target: process.env.USER_SERVICE_URL!,
-  })
-);
-
-app.use(
-  process.env.POSTS_SERVICE_ROUTE!,
-  isAuthenticated,
-  createProxyMiddleware({
-    ...proxyOptions,
-    target: process.env.POSTS_SERVICE_URL!,
-  })
-);
-
-app.use(
-  "/api/notifications",
-  isAuthenticated,
-  createProxyMiddleware({
-    ...proxyOptions,
-    target: "/api/notifications",
-  })
-);
-
-app.use(
-  "/uploads/profile-pictures",
-  createProxyMiddleware({
-    target: process.env.USER_SERVICE_URL!,
-    changeOrigin: true,
-    pathRewrite: {
-      "^/uploads/profile-pictures": "/uploads/profile-pictures",
-    },
-  })
-);
-
-app.use(
-  "/uploads/posts-file",
-  createProxyMiddleware({
-    target: process.env.POSTS_SERVICE_URL!,
-    changeOrigin: true,
-    pathRewrite: {
-      "^/uploads/profile-pictures": "/uploads/profile-pictures",
-    },
-  })
+      io.to(`user:${notification.userId}`).emit("notification", notification);
+    } catch (err) {
+      console.error("Error handling notification event:", err);
+    }
+  }
 );
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Gateway running on port ${PORT}`));
+export const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL || "http://localhost:4200",
+    credentials: true,
+  },
+});
+
+// Share session with socket.io
+io.use((socket, next) => {
+  const req = socket.request as any;
+  const res = {} as any;
+  sessionMiddleware(req, res, () => {
+    if (req.session?.userId) {
+      socket.data.userId = req.session.userId;
+      return next();
+    }
+    next(new Error("Unauthorized"));
+  });
+});
+export const userSockets = new Map();
+
+// When a user connects
+io.on("connection", (socket) => {
+  const session = socket.request.session;
+  if (session?.userId) {
+    const userId = session.userId;
+    console.log(`🔌 User ${userId} connected`);
+    userSockets.set(userId, socket);
+  }
+
+  socket.on("disconnect", () => {
+    const session = socket.request.session;
+    if (session?.userId) {
+      userSockets.delete(session.userId);
+    }
+  });
+});
+
+app.use(router);
+httpServer.listen(PORT, () =>
+  console.log(`Gateway + WebSocket running on port ${PORT}`)
+);

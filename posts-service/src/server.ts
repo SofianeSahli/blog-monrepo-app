@@ -6,6 +6,7 @@ import { router as PostsRouter } from "./routes/posts";
 import fileUpload from "express-fileupload";
 import path from "path";
 import { commentRouter } from "./routes/comments";
+import { createClient } from "redis";
 
 dotenv.config();
 
@@ -20,7 +21,9 @@ app.use(
 );
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-
+export const redisPub = createClient({ url: process.env.REDIS_URL });
+redisPub.on("error", (err) => console.error("Redis Pub Error", err));
+redisPub.connect();
 const PORT = process.env.POSTS_PORT || 4001;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/postsdb";
 const ELASTIC_URI = process.env.ELASTIC_URI || "http://localhost:9200";

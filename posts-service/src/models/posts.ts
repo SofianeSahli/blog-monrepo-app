@@ -12,7 +12,7 @@ const CommentSchema = new Schema<IComment>({
   userId: { type: Schema.Types.ObjectId, required: true, ref: "User" },
   text: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
-  comments: [{ type: Schema.Types.ObjectId, ref: "Comments" }],
+  comments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
 });
 
 export interface IPost extends Document {
@@ -33,7 +33,7 @@ const PostSchema = new Schema<IPost>(
     text: { type: String, required: true },
     picture: { type: String },
     likes: [{ type: Schema.Types.ObjectId, ref: "users" }],
-    comments: [{ type: Schema.Types.ObjectId, ref: "Comments" }],
+    comments: [{ type: Schema.Types.ObjectId, ref: "Comment" }],
     userId: { type: Schema.Types.ObjectId, ref: "users", required: true },
     tags: [{ type: Schema.Types.ObjectId, ref: "Tag" }],
   },

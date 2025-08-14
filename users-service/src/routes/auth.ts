@@ -3,13 +3,7 @@ import passport from "../conf/passport";
 import jwt from "jsonwebtoken";
 import { IUser, User } from "../models/User";
 import dotenv from "dotenv";
-import {
-  isRefreshTokenValidMongo,
-  revokeRefreshTokenMongo,
-  saveRefreshTokenMongo,
-} from "../conf/jwt.utils";
-import { use } from "passport";
-import { redisClient } from "../server";
+import { saveRefreshTokenMongo } from "../conf/jwt.utils";
 
 dotenv.config();
 
@@ -87,66 +81,6 @@ router.post(process.env.LOGIN_ROUTE || "/login", (req, res, next) => {
   })(req, res, next);
 });
 
-router.post("/refresh", async (req, res) => {
-  const refreshToken = req.cookies?.refreshToken;
-
-  if (!refreshToken) {
-    return res.status(401).json({ message: "Refresh token missing" });
-  }
-
-  if (!(await isRefreshTokenValidMongo(refreshToken))) {
-    return res.status(403).json({ message: "Invalid refresh token" });
-  }
-
-  jwt.verify(
-    refreshToken,
-    REFRESH_TOKEN_SECRET,
-    async (err: any, decoded: any) => {
-      if (err)
-        return res
-          .status(403)
-          .json({ message: "Invalid or expired refresh token" });
-
-      const userPayload = decoded as { sub: string; roles: string[] };
-
-      const newRefreshToken = jwt.sign(
-        { sub: userPayload.sub, roles: userPayload.roles },
-        REFRESH_TOKEN_SECRET,
-        { expiresIn: REFRESH_TOKEN_EXPIRATION_SEC }
-      );
-
-      await revokeRefreshTokenMongo(refreshToken);
-      await saveRefreshTokenMongo(
-        newRefreshToken,
-        userPayload.sub,
-        REFRESH_TOKEN_EXPIRATION_SEC
-      );
-
-      if (req.session) {
-        req.session.userId = userPayload.sub;
-        req.session.save(() => {
-          res.cookie("refreshToken", newRefreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: REFRESH_TOKEN_EXPIRATION_SEC * 1000,
-          });
-
-          res.json({ message: "Token refreshed" });
-        });
-      } else {
-        res.cookie("refreshToken", newRefreshToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: REFRESH_TOKEN_EXPIRATION_SEC * 1000,
-        });
-        res.json({ message: "Token refreshed" });
-      }
-    }
-  );
-});
-
 // Logout route
 router.post("/logout", (req, res, next) => {
   req.logout((err) => {
@@ -164,6 +98,60 @@ router.post("/logout", (req, res, next) => {
       res.json({ message: "Logged out" });
     });
   });
+});
+
+router.get(process.env.SESSION_CHECK || "/session-check", async (req, res) => {
+  try {
+    if (req.session?.userId) {
+      return res.status(200).json({ valid: true, userId: req.session.userId });
+    }
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({ valid: false, error: "No refresh token" });
+    }
+
+    let payload: any;
+    try {
+      payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET) as {
+        sub: string;
+        roles: string[];
+      };
+    } catch (err) {
+      return res
+        .status(401)
+        .json({ valid: false, error: "Refresh token expired" });
+    }
+
+    const user: IUser | null = await User.findById(payload.sub);
+    if (!user)
+      return res.status(401).json({ valid: false, error: "User not found" });
+
+    req.session.userId = user._id?.toString();
+    const newRefreshToken = jwt.sign(
+      { sub: user.id, roles: user.roles },
+      REFRESH_TOKEN_SECRET,
+      { expiresIn: REFRESH_TOKEN_EXPIRATION_SEC }
+    );
+    await saveRefreshTokenMongo(
+      newRefreshToken,
+      user.id,
+      REFRESH_TOKEN_EXPIRATION_SEC
+    );
+
+    req.session.save(() => {
+      res.cookie("refreshToken", newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: REFRESH_TOKEN_EXPIRATION_SEC * 1000,
+      });
+
+      return res.status(200).json({ valid: true, refreshed: true });
+    });
+  } catch (err) {
+    console.error("Session check error:", err);
+    res.status(500).json({ valid: false, error: "Internal server error" });
+  }
 });
 
 export default router;

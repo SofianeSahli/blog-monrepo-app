@@ -1,5 +1,5 @@
 // src/routes/comment.router.ts
-import { Router } from "express";
+import { Router, Response } from "express";
 import { Types } from "mongoose";
 import {
   indexComment,
@@ -7,16 +7,18 @@ import {
   deleteCommentFromES,
   searchComments,
 } from "../config/comments-es-setup";
-import { Comment, Post } from "../models/posts";
+import { Comment, IPost, Post } from "../models/posts";
 import { updatePostInIndex } from "../config/elastic-search-setup";
 import { User } from "../models/User";
+import { redisPub } from "../server";
+import express from "express";
 
 export const commentRouter = Router();
 
 // CREATE comment
 commentRouter.post(
   process.env.COMMENT_ROUTE || "/comments",
-  async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const { userId, text, postId, parentCommentId } = req.body;
 
@@ -28,34 +30,34 @@ commentRouter.post(
         userId: new Types.ObjectId(userId),
         text,
         comments: [],
+        postId,
       });
+      let post: IPost | null = await Post.findById(postId).lean();
       await comment.save();
-      if (parentCommentId) {
-        await Comment.findByIdAndUpdate(parentCommentId, {
-          $push: { comments: comment._id },
-        });
 
-        // Fetch the post document to pass to ES update function
-        const post = await Post.findById(postId).lean();
-        if (post) {
-          await updatePostInIndex(post);
-        }
-      } else {
-        await Post.findByIdAndUpdate(postId, {
-          $push: { comments: comment._id },
-        });
+      post = await Post.findByIdAndUpdate(
+        postId,
+        { $push: { comments: comment._id } },
+        { new: true } // <-- returns the updated document
+      ).lean(); // optional, if you want plain JS object
 
-        // Fetch the post document to pass to ES update function
-        const post = await Post.findById(postId).lean();
-        if (post) {
-          await updatePostInIndex(post);
-        }
-      }
-      // Index in Elasticsearch
-      await indexComment(comment);
+      if (post) await updatePostInIndex(post);
+
       const user = await User.findById(userId)
         .select("firstName lastName profilePicture")
         .lean();
+
+      redisPub.publish(
+        process.env.COMMENT_CREATED_EVENT || "comments_created",
+        JSON.stringify({
+          userId: post === null ? null : post.userId,
+          parentCommentOwnerId: parentCommentId,
+          postId: postId,
+          type: "notifications.someone_commented",
+          message: "notifications.someone_talkin_to_you",
+        })
+      );
+      await indexComment(comment);
 
       res.status(201).json({
         ...comment.toObject(),

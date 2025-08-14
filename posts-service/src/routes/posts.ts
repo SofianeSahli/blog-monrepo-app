@@ -19,6 +19,19 @@ const router = express.Router();
 
 const allowedMimeTypes = ["image/jpeg", "image/png", "image/jpg"];
 
+router.get("/tags", async (req, res) => {
+  try {
+    const tags = await Tag.find().lean(); // plain JS objects
+    const formatted = tags.map((tag) => ({
+      label: tag.name,
+      value: tag.name,
+    }));
+    res.json(formatted);
+  } catch (err) {
+    console.error("Error fetching tags:", err);
+    res.status(500).json({ error: "Failed to fetch tags" });
+  }
+});
 // GET all posts
 router.get(process.env.POSTS_ROUTE!, async (req, res) => {
   try {

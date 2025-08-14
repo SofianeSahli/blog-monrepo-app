@@ -58,7 +58,16 @@ services:
       - elasticsearch
     volumes:
       - ./uploads/posts-file:/app/uploads/posts-file
-
+  notifications-service:
+    build:
+      context: ./notifications-service
+    container_name: notifications-service
+    restart: always
+    env_file:
+      - .env
+    depends_on:
+      - mongo-users
+      - redis
   gateway-service:
     build:
       context: ./gateway-service
@@ -69,6 +78,7 @@ services:
     env_file:
       - .env
     depends_on:
+      - notifications-service
       - users-service
       - posts-service
       - redis
