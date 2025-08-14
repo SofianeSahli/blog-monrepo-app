@@ -21,6 +21,7 @@ Key features:
 - Implements **CORS protection**
 - Routes requests to the appropriate microservice
 - Can be extended for request rate limiting, logging, and monitoring
+- Websocket connexion
 
 ### 2. **Users Service**
 - Manages:
@@ -39,13 +40,18 @@ Key features:
   - Full-text search
   - Efficient querying
   - Data indexing
+ 
+### 3. **Notifications Service**
+- Manages:
+  - Notifications
+
 
 ---
 
 ## Technologies Used
 - **Express.js** + **TypeScript** – Strongly typed backend services
 - **Docker** – Containerized deployment
-- **Redis** – Session storage
+- **Redis** – Session storage and messageries system
 - **JWT** – Token-based authentication
 - **HTTP-only Cookies** – Secure session delivery
 - **Elasticsearch** – Full-text search and analytics
@@ -54,12 +60,7 @@ Key features:
 ---
 
 ## Prerequisites
-- **Node.js** (recommended: v18+)
-- **npm** (recommended: v9+)
-- **Docker** & **Docker Compose**
-- **Redis** running locally or via Docker
-- **Elasticsearch** running locally or accessible remotely
-- Internet connection to install dependencies
+- Docker desktop
 
 ---
 
@@ -75,6 +76,9 @@ From the monorepo root:
 npm install --legacy-peer-deps
 ```
 ### 3. docker-compose up --build
+copy .env.exemple and change name to .env in case there no env file cloned with this repo. Only the one main folder matter, the ones under somes services are for test purposes only and therefore, can be ignored
+
+### 4. docker-compose up --build
 ```
 docker-compose up --build
 ```
